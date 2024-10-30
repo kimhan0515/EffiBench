@@ -1,9 +1,11 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from accelerate import Accelerator
 import torch
 import json
 from tqdm import tqdm
+import argparse
 
-batch_size = 8
+batch_size = 32
 
 def construct_prompt_template(inputs, model, tokenizer):
     tokenizer.pad_token = tokenizer.eos_token
@@ -18,7 +20,7 @@ def construct_prompt_template(inputs, model, tokenizer):
 
     try:
         sequences = model.generate(
-            **input_tokens, max_new_tokens=512, do_sample=True
+            **input_tokens, max_new_tokens=512, do_sample=True, pad_token_id=tokenizer.eos_token_id
         )
         generated_texts = tokenizer.batch_decode(sequences, skip_special_tokens=True)
         for i in range(len(generated_texts)):
@@ -52,7 +54,10 @@ def fetch_completion(data_entry_lists, model, tokenizer):
     return data_entry_lists
 
 if __name__ == "__main__":
-    checkpoint = "codellama/CodeLlama-70b-Instruct-hf"
+    parser = argparse.ArgumentParser(description="Model selection")
+    parser.add_argument("--model", type=str, required=True, help="Specify the model name")
+    args = parser.parse_args()
+    checkpoint = args.model
     with open("../data/dataset.json", "r") as f:
         dataset = json.load(f)
 
@@ -65,6 +70,8 @@ if __name__ == "__main__":
         dataset[i : i + batch_size] = fetch_completion(
             dataset[i : i + batch_size], model, tokenizer
         )
+
+    print(model.hf_device_map)
 
     end_name = checkpoint.split("/")[-1]
     with open(f"./results/{end_name}.json", "w") as f:
